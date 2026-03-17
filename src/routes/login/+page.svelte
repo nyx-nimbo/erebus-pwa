@@ -6,20 +6,47 @@
 
 	let errorMsg = $state('');
 	let loading = $state(false);
-	let googleBtnRef: HTMLDivElement;
+	let googleBtnRef = $state<HTMLDivElement>();
+	let googleReady = $state(false);
+
+	function tryInitGoogle(): boolean {
+		if (typeof google === 'undefined') return false;
+		try {
+			initGoogleSignIn(handleCredentialResponse);
+			googleReady = true;
+			return true;
+		} catch (e) {
+			console.error('Failed to initialize Google Sign-In:', e);
+			return false;
+		}
+	}
+
+	// Re-render Google button whenever the div ref becomes available and Google is ready
+	$effect(() => {
+		if (googleBtnRef && googleReady) {
+			renderGoogleButton(googleBtnRef);
+		}
+	});
 
 	onMount(() => {
 		const unsub = isAuthenticated.subscribe((v) => {
 			if (v) goto('/');
 		});
 
-		try {
-			initGoogleSignIn(handleCredentialResponse);
-			if (googleBtnRef) {
-				renderGoogleButton(googleBtnRef);
-			}
-		} catch (e) {
-			console.error('Failed to initialize Google Sign-In:', e);
+		if (!tryInitGoogle()) {
+			// GSI script not loaded yet — poll until it's available
+			let attempts = 0;
+			const interval = setInterval(() => {
+				attempts++;
+				if (tryInitGoogle() || attempts >= 40) {
+					clearInterval(interval);
+				}
+			}, 250);
+
+			return () => {
+				unsub();
+				clearInterval(interval);
+			};
 		}
 
 		return unsub;

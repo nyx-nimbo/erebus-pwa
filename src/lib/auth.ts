@@ -72,7 +72,7 @@ export function renderGoogleButton(element: HTMLElement): void {
 }
 
 export async function exchangeCodeForToken(credential: string): Promise<{ token: string; user: { email: string; name: string; picture: string } }> {
-	const apiUrl = env.PUBLIC_API_URL;
+	const apiUrl = env.PUBLIC_API_URL || 'http://localhost:8080/api';
 	const res = await fetch(`${apiUrl}/auth/google`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },

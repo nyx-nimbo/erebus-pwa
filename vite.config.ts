@@ -4,6 +4,9 @@ import { SvelteKitPWA } from '@vite-pwa/sveltekit';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+	server: {
+		port: 3001
+	},
 	plugins: [
 		tailwindcss(),
 		sveltekit(),
