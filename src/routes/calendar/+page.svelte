@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getTodayEvents, getUpcomingEvents, createEvent } from '$lib/api';
+	import { goto } from '$app/navigation';
+	import { getTodayEvents, getUpcomingEvents, createEvent, getGoogleConnectionStatus } from '$lib/api';
 	import type { CalendarEvent } from '$lib/types';
 
 	let todayEvents: CalendarEvent[] = $state([]);
 	let upcomingEvents: CalendarEvent[] = $state([]);
 	let loading = $state(true);
 	let error = $state('');
+	let needsConnect = $state(false);
 
 	let showModal = $state(false);
 	let creating = $state(false);
@@ -18,19 +20,34 @@
 		location: ''
 	});
 
-	onMount(() => {
-		loadEvents();
+	onMount(async () => {
+		try {
+			const status = await getGoogleConnectionStatus();
+			if (!status.connected) {
+				needsConnect = true;
+				loading = false;
+				return;
+			}
+		} catch {
+			// If status check fails, try loading anyway
+		}
+		await loadEvents();
 	});
 
 	async function loadEvents() {
 		loading = true;
 		error = '';
+		needsConnect = false;
 		try {
 			const [today, upcoming] = await Promise.all([getTodayEvents(), getUpcomingEvents()]);
 			todayEvents = today;
 			upcomingEvents = upcoming;
 		} catch (e: any) {
-			error = e.message || 'Failed to load events';
+			if (e.message?.includes('not connected') || e.message?.includes('connect')) {
+				needsConnect = true;
+			} else {
+				error = e.message || 'Failed to load events';
+			}
 		} finally {
 			loading = false;
 		}
@@ -94,7 +111,30 @@
 		</button>
 	</div>
 
-	{#if loading}
+	{#if needsConnect}
+		<div class="flex items-center justify-center py-20">
+			<div class="text-center space-y-4 max-w-sm">
+				<div class="w-16 h-16 rounded-full bg-[#7c3aed]/10 border border-[#7c3aed]/30 flex items-center justify-center mx-auto">
+					<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+						<line x1="16" y1="2" x2="16" y2="6"/>
+						<line x1="8" y1="2" x2="8" y2="6"/>
+						<line x1="3" y1="10" x2="21" y2="10"/>
+					</svg>
+				</div>
+				<h2 class="text-lg font-semibold text-[#e5e5e5]">Connect Google Services</h2>
+				<p class="text-sm text-[#a3a3a3]">
+					To access your Google Calendar, you need to connect your Google account first.
+				</p>
+				<button
+					class="px-6 py-2.5 bg-[#7c3aed] text-white text-sm font-medium rounded-lg hover:bg-[#6d28d9] transition-colors"
+					onclick={() => goto('/settings')}
+				>
+					Go to Settings
+				</button>
+			</div>
+		</div>
+	{:else if loading}
 		<div class="flex items-center justify-center py-20">
 			<div class="w-6 h-6 border-2 border-[#7c3aed] border-t-transparent rounded-full animate-spin"></div>
 		</div>

@@ -89,6 +89,10 @@ export const getBusinessUnits = (clientId: string) =>
 // Projects
 export const getProjects = () =>
 	request<PaginatedResponse<Project>>('/projects').then(unwrapList);
+export const getTopLevelProjects = () =>
+	request<PaginatedResponse<Project>>('/projects?topLevel=true&limit=100').then(unwrapList);
+export const getSubProjects = (parentId: string) =>
+	request<PaginatedResponse<Project>>(`/projects?parentId=${encodeURIComponent(parentId)}&limit=100`).then(unwrapList);
 export const getProject = async (id: string): Promise<Project> => {
 	const res = await request<{ project: Project; subProjects: Project[] }>(`/projects/${id}`);
 	return { ...res.project, subProjects: res.subProjects || [] };
@@ -248,6 +252,22 @@ export const markRead = (id: string) =>
 	request<void>(`/messages/${id}/read`, { method: 'PUT' });
 export const getUnreadCount = () =>
 	request<{ count: number }>('/messages/unread').then(r => r.count);
+
+// Google Services Connection
+export const getGoogleConnectURL = (redirectUri: string) =>
+	request<{ url: string }>('/auth/google/connect', {
+		method: 'POST',
+		body: JSON.stringify({ redirectUri })
+	});
+export const googleCallback = (code: string) =>
+	request<{ connected: boolean }>('/auth/google/callback', {
+		method: 'POST',
+		body: JSON.stringify({ code })
+	});
+export const getGoogleConnectionStatus = () =>
+	request<{ connected: boolean }>('/auth/google/status');
+export const disconnectGoogle = () =>
+	request<void>('/auth/google/disconnect', { method: 'POST' });
 
 function generateSessionKey(): string {
 	return crypto.randomUUID();

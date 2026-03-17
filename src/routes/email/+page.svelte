@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getEmails, getEmail, sendEmail } from '$lib/api';
+	import { goto } from '$app/navigation';
+	import { getEmails, getEmail, sendEmail, getGoogleConnectionStatus } from '$lib/api';
 	import type { Email } from '$lib/types';
 
 	let emails = $state<Email[]>([]);
@@ -9,6 +10,7 @@
 	let loadingBody = $state(false);
 	let error = $state('');
 	let showCompose = $state(false);
+	let needsConnect = $state(false);
 
 	let composeTo = $state('');
 	let composeSubject = $state('');
@@ -18,16 +20,32 @@
 	let sendSuccess = $state('');
 
 	onMount(async () => {
+		// Check connection first
+		try {
+			const status = await getGoogleConnectionStatus();
+			if (!status.connected) {
+				needsConnect = true;
+				loading = false;
+				return;
+			}
+		} catch {
+			// If status check fails, try loading anyway
+		}
 		await fetchEmails();
 	});
 
 	async function fetchEmails() {
 		loading = true;
 		error = '';
+		needsConnect = false;
 		try {
 			emails = await getEmails();
 		} catch (e: any) {
-			error = e.message || 'Failed to load emails';
+			if (e.message?.includes('not connected') || e.message?.includes('connect')) {
+				needsConnect = true;
+			} else {
+				error = e.message || 'Failed to load emails';
+			}
 		} finally {
 			loading = false;
 		}
@@ -113,7 +131,28 @@
 		</button>
 	</div>
 
-	{#if loading}
+	{#if needsConnect}
+		<div class="flex-1 flex items-center justify-center">
+			<div class="text-center space-y-4 max-w-sm">
+				<div class="w-16 h-16 rounded-full bg-[#7c3aed]/10 border border-[#7c3aed]/30 flex items-center justify-center mx-auto">
+					<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+						<polyline points="22,6 12,13 2,6"/>
+					</svg>
+				</div>
+				<h2 class="text-lg font-semibold text-[#e5e5e5]">Connect Google Services</h2>
+				<p class="text-sm text-[#a3a3a3]">
+					To access your Gmail inbox, you need to connect your Google account first.
+				</p>
+				<button
+					class="px-6 py-2.5 bg-[#7c3aed] text-white text-sm font-medium rounded-lg hover:bg-[#6d28d9] transition-colors"
+					onclick={() => goto('/settings')}
+				>
+					Go to Settings
+				</button>
+			</div>
+		</div>
+	{:else if loading}
 		<div class="flex-1 flex items-center justify-center">
 			<div class="w-6 h-6 border-2 border-[#7c3aed] border-t-transparent rounded-full animate-spin"></div>
 		</div>
