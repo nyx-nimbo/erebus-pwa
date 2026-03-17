@@ -9,7 +9,10 @@ import type {
 	CalendarEvent,
 	ChatSession,
 	BusinessUnit,
-	HealthStatus
+	HealthStatus,
+	Member,
+	Message,
+	Conversation
 } from './types';
 
 function getBaseUrl(): string {
@@ -225,6 +228,26 @@ export async function sendChat(
 
 	return () => controller.abort();
 }
+
+// Members
+export const getMembers = () =>
+	request<WrappedResponse<Member>>('/members').then(unwrapList);
+export const getUsers = () =>
+	request<WrappedResponse<Member>>('/users').then(unwrapList);
+export const getAgents = () =>
+	request<WrappedResponse<Member>>('/agents').then(unwrapList);
+
+// Messages
+export const sendMessage = (toId: string, content: string) =>
+	request<Message>('/messages', { method: 'POST', body: JSON.stringify({ toId, content }) });
+export const getConversation = (withId: string) =>
+	request<WrappedResponse<Message>>(`/messages?with=${encodeURIComponent(withId)}`).then(unwrapList);
+export const getConversations = () =>
+	request<WrappedResponse<Conversation>>('/messages/conversations').then(unwrapList);
+export const markRead = (id: string) =>
+	request<void>(`/messages/${id}/read`, { method: 'PUT' });
+export const getUnreadCount = () =>
+	request<{ count: number }>('/messages/unread').then(r => r.count);
 
 function generateSessionKey(): string {
 	return crypto.randomUUID();

@@ -11,10 +11,12 @@
 	const navItems = [
 		{ path: '/', label: 'Dashboard', icon: '⊞' },
 		{ path: '/chat', label: 'Chat', icon: '💬' },
+		{ path: '/messages', label: 'Messages', icon: '✉' },
+		{ path: '/members', label: 'Members', icon: '👤' },
 		{ path: '/projects', label: 'Projects', icon: '📁' },
 		{ path: '/clients', label: 'Clients', icon: '👥' },
 		{ path: '/ideas', label: 'Ideas', icon: '💡' },
-		{ path: '/email', label: 'Email', icon: '✉' },
+		{ path: '/email', label: 'Email', icon: '📧' },
 		{ path: '/calendar', label: 'Calendar', icon: '📅' },
 		{ path: '/settings', label: 'Settings', icon: '⚙' }
 	];

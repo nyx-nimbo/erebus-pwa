@@ -141,6 +141,37 @@ export interface HealthStatus {
 	time?: string;
 }
 
+export interface Member {
+	id: string;
+	name: string;
+	email?: string;
+	type: 'user' | 'agent';
+	status: 'online' | 'offline';
+	lastSeen?: string;
+	picture?: string;
+}
+
+export interface Message {
+	id: string;
+	fromId: string;
+	fromName: string;
+	fromType: 'user' | 'agent';
+	toId: string;
+	toName: string;
+	content: string;
+	read: boolean;
+	createdAt: string;
+}
+
+export interface Conversation {
+	memberId: string;
+	memberName: string;
+	memberType: 'user' | 'agent';
+	lastMessage: string;
+	lastMessageAt: string;
+	unreadCount: number;
+}
+
 export interface ApiError {
 	error: string;
 	code: number;
