@@ -5,11 +5,16 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:22-alpine
-WORKDIR /app
-COPY --from=builder /app/build ./build
-COPY --from=builder /app/package*.json ./
-RUN npm ci --omit=dev
+FROM nginx:alpine
+COPY --from=builder /app/build /usr/share/nginx/html
+# SPA fallback: all routes → index.html
+RUN echo 'server { \
+    listen 3000; \
+    root /usr/share/nginx/html; \
+    index index.html; \
+    location / { \
+        try_files $uri $uri/ /index.html; \
+    } \
+}' > /etc/nginx/conf.d/default.conf
 EXPOSE 3000
-ENV PORT=3000
-CMD ["node", "build"]
+CMD ["nginx", "-g", "daemon off;"]
