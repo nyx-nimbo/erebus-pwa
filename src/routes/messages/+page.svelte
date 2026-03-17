@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, untrack } from 'svelte';
 	import { page } from '$app/stores';
 	import {
 		getConversations,
@@ -36,6 +36,7 @@
 	let typingMap = $state<Record<string, { name: string; timeout: ReturnType<typeof setTimeout> }>>({});
 	let presence = $state<Record<string, 'online' | 'offline'>>({});
 	let typingThrottle = 0;
+	let dataLoaded = $state(false);
 
 	let filteredConversations = $derived(
 		conversations
@@ -43,12 +44,12 @@
 			.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
 	);
 
+	// Show ALL members in the picker (don't filter out existing conversations)
 	let filteredMembers = $derived(
 		members.filter(
 			(m) =>
-				(m.name.toLowerCase().includes(search.toLowerCase()) ||
-					(m.email && m.email.toLowerCase().includes(search.toLowerCase()))) &&
-				!conversations.some((c) => c.memberId === (m.email || m.id))
+				m.name.toLowerCase().includes(search.toLowerCase()) ||
+				(m.email && m.email.toLowerCase().includes(search.toLowerCase()))
 		)
 	);
 
@@ -63,18 +64,25 @@
 
 	let unsubWs: (() => void) | null = null;
 
-	onMount(() => {
-		loadConversations();
-		loadMembers();
-
-		// Listen for WebSocket messages
+	onMount(async () => {
+		// Listen for WebSocket messages immediately
 		unsubWs = onWsMessage(handleWsMessage);
 
-		// Check URL for ?with= param
+		// Load data in parallel, then mark ready
+		await Promise.all([loadConversations(), loadMembers()]);
+		dataLoaded = true;
+	});
+
+	// React to ?with= URL param — handles both initial load and in-page navigation
+	$effect(() => {
+		if (!dataLoaded) return;
 		const withId = $page.url.searchParams.get('with');
-		if (withId) {
-			selectConversation(withId, '');
-		}
+		if (!withId) return;
+		if (withId === untrack(() => selectedId)) return;
+		const conv = untrack(() => conversations.find((c) => c.memberId === withId));
+		const member = untrack(() => members.find((m) => m.email === withId || m.id === withId));
+		const name = conv?.memberName || member?.name || '';
+		selectConversation(withId, name);
 	});
 
 	onDestroy(() => {
@@ -132,11 +140,8 @@
 		loading = true;
 		error = '';
 		try {
-			conversations = await getConversations();
-			if (selectedId && !selectedName) {
-				const conv = conversations.find((c) => c.memberId === selectedId);
-				if (conv) selectedName = conv.memberName;
-			}
+			const result = await getConversations();
+			conversations = Array.isArray(result) ? result : [];
 		} catch (e: any) {
 			error = e.message || 'Failed to load conversations';
 		} finally {
@@ -146,11 +151,8 @@
 
 	async function loadMembers() {
 		try {
-			members = await getMembers();
-			if (selectedId && !selectedName) {
-				const member = members.find((m) => m.email === selectedId || m.id === selectedId);
-				if (member) selectedName = member.name;
-			}
+			const result = await getMembers();
+			members = Array.isArray(result) ? result : [];
 		} catch {
 			// Non-critical
 		}
@@ -162,7 +164,8 @@
 		showNewMessage = false;
 		loadingMessages = true;
 		try {
-			messages = await getConversation(id);
+			const result = await getConversation(id);
+			messages = Array.isArray(result) ? result : [];
 			for (const msg of messages) {
 				if (!msg.read && msg.fromId === id) {
 					markRead(msg.id).catch(() => {});
@@ -170,6 +173,15 @@
 			}
 			const conv = conversations.find((c) => c.memberId === id);
 			if (conv) conv.unreadCount = 0;
+			// Resolve name if it wasn't provided
+			if (!selectedName) {
+				if (conv) {
+					selectedName = conv.memberName;
+				} else {
+					const member = members.find((m) => m.email === id || m.id === id);
+					if (member) selectedName = member.name;
+				}
+			}
 			scrollToBottom();
 		} catch (e: any) {
 			error = e.message || 'Failed to load messages';
@@ -267,7 +279,7 @@
 	}
 </script>
 
-<div class="max-w-6xl mx-auto h-[calc(100vh-6rem)] md:h-[calc(100vh-3rem)] flex flex-col">
+<div class="max-w-6xl mx-auto h-[calc(100vh-12rem)] md:h-[calc(100vh-6rem)] flex flex-col">
 	<h1 class="text-2xl font-bold text-[#e5e5e5] mb-4 shrink-0">Messages</h1>
 
 	<!-- Error -->
@@ -300,6 +312,9 @@
 			<!-- Conversation List or New Message Member Picker -->
 			<div class="flex-1 overflow-y-auto">
 				{#if showNewMessage}
+					<div class="px-3 py-2 bg-[#0a0a0a] border-b border-[#262626]">
+						<span class="text-[#a3a3a3] text-xs font-medium uppercase tracking-wider">Select a member</span>
+					</div>
 					{#if filteredMembers.length === 0}
 						<div class="p-4 text-center text-[#a3a3a3] text-sm">No members found</div>
 					{:else}
@@ -321,6 +336,9 @@
 										<span class="text-[10px] font-medium uppercase tracking-wider px-1 py-0.5 rounded {member.type === 'agent' ? 'bg-blue-500/20 text-blue-400' : 'bg-[#7c3aed]/20 text-[#7c3aed]'}">
 											{member.type}
 										</span>
+										{#if member.status === 'online'}
+											<span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+										{/if}
 									</div>
 								</div>
 							</button>
@@ -372,7 +390,7 @@
 		<div class="flex-1 flex flex-col bg-[#0a0a0a] {selectedId ? 'flex' : 'hidden sm:flex'}">
 			{#if selectedId}
 				<!-- Chat Header -->
-				<div class="p-3 border-b border-[#262626] flex items-center gap-3 bg-[#111]">
+				<div class="p-3 border-b border-[#262626] flex items-center gap-3 bg-[#111] shrink-0">
 					<button
 						class="sm:hidden text-[#a3a3a3] hover:text-white text-lg"
 						onclick={() => (selectedId = null)}
@@ -398,7 +416,7 @@
 				</div>
 
 				<!-- Messages -->
-				<div class="flex-1 overflow-y-auto p-4 space-y-3">
+				<div class="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
 					{#if loadingMessages}
 						<div class="flex justify-center py-8">
 							<div class="w-5 h-5 border-2 border-[#7c3aed] border-t-transparent rounded-full animate-spin"></div>
@@ -427,13 +445,13 @@
 
 				<!-- Typing indicator -->
 				{#if selectedTyping}
-					<div class="px-4 py-1 text-[#7c3aed] text-xs animate-pulse">
+					<div class="px-4 py-1 text-[#7c3aed] text-xs animate-pulse shrink-0">
 						{typingMap[selectedId!]?.name || 'Someone'} is typing...
 					</div>
 				{/if}
 
 				<!-- Input -->
-				<div class="p-3 border-t border-[#262626] bg-[#111]">
+				<div class="p-3 border-t border-[#262626] bg-[#111] shrink-0">
 					<div class="flex gap-2">
 						<input
 							type="text"
