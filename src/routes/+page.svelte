@@ -122,16 +122,16 @@
 							></span>
 							<span class="text-sm text-[#e5e5e5] capitalize">{health.status}</span>
 						</div>
-						{#if health.version}
+						{#if health.database}
 							<div class="flex items-center justify-between text-sm">
-								<span class="text-[#a3a3a3]">Version</span>
-								<span class="text-[#e5e5e5]">{health.version}</span>
+								<span class="text-[#a3a3a3]">Database</span>
+								<span class="text-[#e5e5e5] capitalize">{health.database}</span>
 							</div>
 						{/if}
-						{#if health.uptime}
+						{#if health.service}
 							<div class="flex items-center justify-between text-sm">
-								<span class="text-[#a3a3a3]">Uptime</span>
-								<span class="text-[#e5e5e5]">{health.uptime}</span>
+								<span class="text-[#a3a3a3]">Service</span>
+								<span class="text-[#e5e5e5]">{health.service}</span>
 							</div>
 						{/if}
 					</div>
@@ -152,7 +152,7 @@
 							<div class="min-w-0">
 								<p class="text-[#e5e5e5] truncate">{task.title}</p>
 								<p class="text-xs text-[#a3a3a3]">
-									{task.status.replace('_', ' ')} &middot; {new Date(task.updated_at).toLocaleDateString()}
+									{task.status.replace('_', ' ')} &middot; {new Date(task.updatedAt).toLocaleDateString()}
 								</p>
 							</div>
 						</div>

@@ -20,6 +20,7 @@
 	let newSessionTitle: string = $state('');
 	let showNewSession: boolean = $state(false);
 	let messagesContainer: HTMLDivElement | undefined = $state(undefined);
+	let abortStream: (() => void) | null = $state(null);
 
 	onMount(() => {
 		loadSessions();
@@ -110,33 +111,32 @@
 		};
 		messages = [...messages, assistantMessage];
 
-		const eventSource = sendChat(selectedKey, currentInput);
-
-		eventSource.onmessage = async (event) => {
-			const data = event.data;
-			if (data === '[DONE]') {
-				eventSource.close();
-				streaming = false;
-				return;
-			}
-			const lastIndex = messages.length - 1;
-			messages = messages.map((m, i) =>
-				i === lastIndex ? { ...m, content: m.content + data } : m
-			);
-			await scrollToBottom();
-		};
-
-		eventSource.onerror = () => {
-			eventSource.close();
-			streaming = false;
-			if (messages.length > 0 && messages[messages.length - 1].content === '') {
+		abortStream = await sendChat(
+			selectedKey,
+			currentInput,
+			async (data) => {
+				const lastIndex = messages.length - 1;
 				messages = messages.map((m, i) =>
-					i === messages.length - 1
-						? { ...m, content: 'An error occurred while streaming the response.' }
-						: m
+					i === lastIndex ? { ...m, content: m.content + data } : m
 				);
+				await scrollToBottom();
+			},
+			() => {
+				streaming = false;
+				abortStream = null;
+			},
+			() => {
+				streaming = false;
+				abortStream = null;
+				if (messages.length > 0 && messages[messages.length - 1].content === '') {
+					messages = messages.map((m, i) =>
+						i === messages.length - 1
+							? { ...m, content: 'An error occurred while streaming the response.' }
+							: m
+					);
+				}
 			}
-		};
+		);
 	}
 
 	function handleKeydown(e: KeyboardEvent) {

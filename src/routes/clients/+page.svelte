@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getClients, createClient, deleteClient } from '$lib/api';
-	import type { Client } from '$lib/types';
+	import { getClients, createClient, deleteClient, getBusinessUnits } from '$lib/api';
+	import type { Client, BusinessUnit } from '$lib/types';
 
 	let clients = $state<Client[]>([]);
 	let loading = $state(true);
 	let error = $state('');
 	let search = $state('');
 	let expandedId = $state<string | null>(null);
+	let clientUnits = $state<Record<string, BusinessUnit[]>>({});
+	let loadingUnits = $state<string | null>(null);
 
 	// Create modal
 	let showCreateModal = $state(false);
@@ -38,8 +40,24 @@
 		}
 	}
 
-	function toggleExpand(id: string) {
-		expandedId = expandedId === id ? null : id;
+	async function toggleExpand(id: string) {
+		if (expandedId === id) {
+			expandedId = null;
+			return;
+		}
+		expandedId = id;
+		if (!clientUnits[id]) {
+			loadingUnits = id;
+			try {
+				const units = await getBusinessUnits(id);
+				clientUnits = { ...clientUnits, [id]: units };
+			} catch (e) {
+				console.error('Failed to load business units:', e);
+				clientUnits = { ...clientUnits, [id]: [] };
+			} finally {
+				loadingUnits = null;
+			}
+		}
 	}
 
 	function openCreateModal() {
@@ -77,10 +95,11 @@
 	async function handleDelete() {
 		if (!deleteTarget) return;
 		deleting = true;
+		const targetId = deleteTarget.id;
 		try {
-			await deleteClient(deleteTarget.id);
+			await deleteClient(targetId);
 			deleteTarget = null;
-			if (expandedId === deleteTarget?.id) expandedId = null;
+			if (expandedId === targetId) expandedId = null;
 			await loadClients();
 		} catch (e: any) {
 			error = e.message || 'Failed to delete client';
@@ -151,9 +170,9 @@
 						<div class="flex items-center justify-between">
 							<div class="min-w-0 flex-1">
 								<h3 class="text-[#e5e5e5] font-medium truncate">{client.name}</h3>
-								<p class="text-[#a3a3a3] text-xs mt-1">
-									{client.business_units?.length ?? 0} business unit{(client.business_units?.length ?? 0) !== 1 ? 's' : ''}
-								</p>
+								{#if client.status}
+									<p class="text-[#a3a3a3] text-xs mt-1 capitalize">{client.status}</p>
+								{/if}
 							</div>
 							<span
 								class="text-[#a3a3a3] text-sm ml-2 transition-transform {expandedId === client.id ? 'rotate-180' : ''}"
@@ -166,10 +185,14 @@
 					<!-- Expanded: Business Units -->
 					{#if expandedId === client.id}
 						<div class="border-t border-[#262626] px-4 py-3">
-							{#if client.business_units && client.business_units.length > 0}
+							{#if loadingUnits === client.id}
+								<div class="flex items-center justify-center py-4">
+									<div class="w-4 h-4 border-2 border-[#7c3aed] border-t-transparent rounded-full animate-spin"></div>
+								</div>
+							{:else if clientUnits[client.id] && clientUnits[client.id].length > 0}
 								<p class="text-[#a3a3a3] text-xs uppercase tracking-wide mb-2">Business Units</p>
 								<ul class="space-y-1">
-									{#each client.business_units as bu}
+									{#each clientUnits[client.id] as bu}
 										<li class="text-[#e5e5e5] text-sm py-1 px-2 bg-[#111] rounded">
 											{bu.name}
 										</li>

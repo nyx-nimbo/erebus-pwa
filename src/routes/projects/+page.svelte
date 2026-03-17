@@ -109,18 +109,11 @@
 						</p>
 					{/if}
 
-					{#if project.client_name}
-						<div class="flex items-center gap-1.5 text-xs text-[#525252]">
-							<span>Client:</span>
-							<span class="text-[#a3a3a3]">{project.client_name}</span>
-						</div>
-					{/if}
-
-					{#if project.is_group}
+					{#if project.isGroup}
 						<div class="mt-2 flex items-center gap-1.5 text-xs text-[#7c3aed]/70">
 							<span>Group</span>
-							{#if project.sub_projects}
-								<span>({project.sub_projects.length} sub-projects)</span>
+							{#if project.subProjects}
+								<span>({project.subProjects.length} sub-projects)</span>
 							{/if}
 						</div>
 					{/if}

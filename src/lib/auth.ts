@@ -80,8 +80,8 @@ export async function exchangeCodeForToken(credential: string): Promise<{ token:
 	});
 
 	if (!res.ok) {
-		const err = await res.json().catch(() => ({ message: 'Authentication failed' }));
-		throw new Error(err.message || 'Authentication failed');
+		const err = await res.json().catch(() => ({ error: 'Authentication failed' }));
+		throw new Error(err.error || err.message || 'Authentication failed');
 	}
 
 	return res.json();

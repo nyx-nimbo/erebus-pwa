@@ -155,25 +155,31 @@
 										{/if}
 
 										<!-- Research -->
-										{#if idea.research}
+										{#if idea.research && idea.research.length > 0}
 											<div>
 												<h4 class="text-xs font-semibold text-[#a3a3a3] uppercase tracking-wide mb-1">Research</h4>
-												<p class="text-xs text-[#d4d4d4] leading-relaxed whitespace-pre-wrap">{idea.research}</p>
+												<div class="space-y-2">
+													{#each idea.research as entry}
+														<div class="text-xs text-[#d4d4d4] leading-relaxed">
+															<p class="whitespace-pre-wrap">{entry.content}</p>
+															{#if entry.source}
+																<p class="text-[#a3a3a3] mt-0.5 italic">Source: {entry.source}</p>
+															{/if}
+														</div>
+													{/each}
+												</div>
 											</div>
 										{/if}
 
-										<!-- Suggested Tasks -->
-										{#if idea.suggested_tasks && idea.suggested_tasks.length > 0}
+										<!-- Tags -->
+										{#if idea.tags && idea.tags.length > 0}
 											<div>
-												<h4 class="text-xs font-semibold text-[#a3a3a3] uppercase tracking-wide mb-1">Suggested Tasks</h4>
-												<ul class="space-y-1">
-													{#each idea.suggested_tasks as task}
-														<li class="flex items-start gap-2 text-xs text-[#d4d4d4]">
-															<span class="text-[#7c3aed] mt-0.5 shrink-0">-</span>
-															<span>{task}</span>
-														</li>
+												<h4 class="text-xs font-semibold text-[#a3a3a3] uppercase tracking-wide mb-1">Tags</h4>
+												<div class="flex flex-wrap gap-1">
+													{#each idea.tags as tag}
+														<span class="px-2 py-0.5 text-[10px] rounded-full bg-[#7c3aed]/20 text-[#7c3aed]">{tag}</span>
 													{/each}
-												</ul>
+												</div>
 											</div>
 										{/if}
 

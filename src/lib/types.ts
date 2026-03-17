@@ -8,15 +8,24 @@ export interface User {
 export interface Client {
 	id: string;
 	name: string;
-	business_units: BusinessUnit[];
-	created_at: string;
-	updated_at: string;
+	email?: string;
+	phone?: string;
+	company?: string;
+	notes?: string;
+	status: string;
+	createdAt: string;
+	updatedAt: string;
 }
 
 export interface BusinessUnit {
 	id: string;
 	name: string;
-	client_id: string;
+	clientId: string;
+	contact?: string;
+	email?: string;
+	notes?: string;
+	createdAt: string;
+	updatedAt: string;
 }
 
 export interface Project {
@@ -24,16 +33,18 @@ export interface Project {
 	name: string;
 	description: string;
 	status: ProjectStatus;
-	client_id?: string;
-	client_name?: string;
-	parent_id?: string;
-	is_group: boolean;
-	sub_projects?: Project[];
+	clientId?: string;
+	parentId?: string;
+	isGroup: boolean;
+	priority?: string;
+	tags?: string[];
+	startDate?: string;
+	dueDate?: string;
+	subProjects?: Project[];
 	ports?: PortMapping[];
-	env_files?: EnvFile[];
-	tasks?: Task[];
-	created_at: string;
-	updated_at: string;
+	envFiles?: EnvFile[];
+	createdAt: string;
+	updatedAt: string;
 }
 
 export type ProjectStatus = 'active' | 'paused' | 'completed' | 'archived';
@@ -53,24 +64,35 @@ export interface Task {
 	title: string;
 	description: string;
 	status: TaskStatus;
-	project_id: string;
-	assigned_to?: string;
-	priority: number;
-	created_at: string;
-	updated_at: string;
+	projectId: string;
+	assignedTo?: string;
+	claimedBy?: string;
+	priority?: string;
+	dueDate?: string;
+	parentId?: string;
+	createdAt: string;
+	updatedAt: string;
 }
 
 export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done';
+
+export interface ResearchEntry {
+	id: string;
+	content: string;
+	source?: string;
+	createdAt: string;
+}
 
 export interface Idea {
 	id: string;
 	title: string;
 	description: string;
 	status: IdeaStatus;
-	research?: string;
-	suggested_tasks?: string[];
-	created_at: string;
-	updated_at: string;
+	category?: string;
+	tags?: string[];
+	research?: ResearchEntry[];
+	createdAt: string;
+	updatedAt: string;
 }
 
 export type IdeaStatus = 'new' | 'researching' | 'researched' | 'developing' | 'paused';
@@ -100,24 +122,26 @@ export interface CalendarEvent {
 export interface ChatMessage {
 	role: 'user' | 'assistant';
 	content: string;
-	timestamp?: string;
 }
 
 export interface ChatSession {
+	id: string;
 	key: string;
 	title: string;
-	messages: ChatMessage[];
-	created_at: string;
+	model?: string;
+	messages?: ChatMessage[];
+	createdAt: string;
+	updatedAt: string;
 }
 
 export interface HealthStatus {
 	status: string;
-	version?: string;
-	uptime?: string;
+	service?: string;
+	database?: string;
+	time?: string;
 }
 
 export interface ApiError {
 	error: string;
-	message: string;
-	status: number;
+	code: number;
 }

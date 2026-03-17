@@ -96,12 +96,7 @@
 						>
 							{project.status}
 						</span>
-						{#if project.client_name}
-							<span class="text-[#525252]">
-								Client: <span class="text-[#a3a3a3]">{project.client_name}</span>
-							</span>
-						{/if}
-						{#if project.is_group}
+						{#if project.isGroup}
 							<span class="text-[#7c3aed]/70 text-xs">Group Project</span>
 						{/if}
 					</div>
@@ -110,11 +105,11 @@
 		</div>
 
 		<!-- Sub-Projects -->
-		{#if project.is_group && project.sub_projects && project.sub_projects.length > 0}
+		{#if project.isGroup && project.subProjects && project.subProjects.length > 0}
 			<div class="mb-6">
 				<h2 class="text-lg font-semibold text-white mb-3">Sub-Projects</h2>
 				<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-					{#each project.sub_projects as sub (sub.id)}
+					{#each project.subProjects as sub (sub.id)}
 						<button
 							class="text-left p-3 rounded-lg bg-[#1a1a1a] border border-[#262626] hover:border-[#7c3aed]/50 transition-all cursor-pointer"
 							onclick={() => goto('/projects/' + sub.id)}
@@ -161,8 +156,8 @@
 											<p class="text-xs text-[#a3a3a3] line-clamp-2 mb-2">{task.description}</p>
 										{/if}
 										<div class="flex items-center justify-between">
-											{#if task.assigned_to}
-												<span class="text-xs text-[#525252] truncate max-w-[120px]">{task.assigned_to}</span>
+											{#if task.assignedTo}
+												<span class="text-xs text-[#525252] truncate max-w-[120px]">{task.assignedTo}</span>
 											{:else}
 												<span></span>
 											{/if}
@@ -212,11 +207,11 @@
 		{/if}
 
 		<!-- Env Files Section -->
-		{#if project.env_files && project.env_files.length > 0}
+		{#if project.envFiles && project.envFiles.length > 0}
 			<div class="mb-6">
 				<h2 class="text-lg font-semibold text-white mb-3">Environment Files</h2>
 				<div class="space-y-3">
-					{#each project.env_files as envFile}
+					{#each project.envFiles as envFile}
 						<div class="rounded-lg bg-[#1a1a1a] border border-[#262626] overflow-hidden">
 							<div class="px-4 py-2.5 border-b border-[#262626] flex items-center gap-2">
 								<span class="text-sm font-medium text-[#a3a3a3]">{envFile.name}</span>
