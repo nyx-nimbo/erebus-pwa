@@ -2,9 +2,10 @@
 	import '../app.css';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { onMount } from 'svelte';
-	import { initAuth, logout } from '$lib/auth';
+	import { onMount, onDestroy } from 'svelte';
+	import { initAuth, logout as authLogout } from '$lib/auth';
 	import { isAuthenticated, sidebarOpen } from '$lib/stores';
+	import { connect, disconnect, unreadWsCount } from '$lib/websocket';
 
 	let { children } = $props();
 
@@ -23,12 +24,30 @@
 
 	let authenticated = $state(false);
 	let sidebar = $state(false);
+	let unreadCount = $state(0);
 
-	isAuthenticated.subscribe((v) => (authenticated = v));
-	sidebarOpen.subscribe((v) => (sidebar = v));
+	const unsubAuth = isAuthenticated.subscribe((v) => (authenticated = v));
+	const unsubSidebar = sidebarOpen.subscribe((v) => (sidebar = v));
+	const unsubUnread = unreadWsCount.subscribe((v) => (unreadCount = v));
 
 	onMount(() => {
 		initAuth();
+	});
+
+	onDestroy(() => {
+		unsubAuth();
+		unsubSidebar();
+		unsubUnread();
+		disconnect();
+	});
+
+	// Connect/disconnect WebSocket based on auth state
+	$effect(() => {
+		if (authenticated) {
+			connect();
+		} else {
+			disconnect();
+		}
 	});
 
 	$effect(() => {
@@ -36,7 +55,16 @@
 		if (!authenticated && path !== '/login') {
 			goto('/login');
 		}
+		// Clear unread count when viewing messages
+		if (path === '/messages' || path.startsWith('/messages/')) {
+			unreadWsCount.set(0);
+		}
 	});
+
+	function logout() {
+		disconnect();
+		authLogout();
+	}
 
 	function isActive(path: string): boolean {
 		if (path === '/') return $page.url.pathname === '/';
@@ -65,7 +93,12 @@
 						onclick={() => navigate(item.path)}
 					>
 						<span class="text-base">{item.icon}</span>
-						{item.label}
+						<span class="flex-1 text-left">{item.label}</span>
+						{#if item.path === '/messages' && unreadCount > 0}
+							<span class="bg-[#7c3aed] text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+								{unreadCount > 9 ? '9+' : unreadCount}
+							</span>
+						{/if}
 					</button>
 				{/each}
 			</nav>
@@ -95,7 +128,12 @@
 								onclick={() => navigate(item.path)}
 							>
 								<span class="text-base">{item.icon}</span>
-								{item.label}
+								<span class="flex-1 text-left">{item.label}</span>
+								{#if item.path === '/messages' && unreadCount > 0}
+									<span class="bg-[#7c3aed] text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+										{unreadCount > 9 ? '9+' : unreadCount}
+									</span>
+								{/if}
 							</button>
 						{/each}
 					</nav>
@@ -122,11 +160,16 @@
 		<nav class="md:hidden fixed bottom-0 left-0 right-0 bg-[#111] border-t border-[#262626] flex justify-around py-2 z-30">
 			{#each navItems.slice(0, 5) as item}
 				<button
-					class="flex flex-col items-center gap-0.5 px-2 py-1 text-xs transition-colors {isActive(item.path) ? 'text-[#7c3aed]' : 'text-[#a3a3a3]'}"
+					class="relative flex flex-col items-center gap-0.5 px-2 py-1 text-xs transition-colors {isActive(item.path) ? 'text-[#7c3aed]' : 'text-[#a3a3a3]'}"
 					onclick={() => navigate(item.path)}
 				>
 					<span class="text-lg">{item.icon}</span>
 					{item.label}
+					{#if item.path === '/messages' && unreadCount > 0}
+						<span class="absolute -top-0.5 right-0 bg-[#7c3aed] text-white text-[8px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+							{unreadCount > 9 ? '9+' : unreadCount}
+						</span>
+					{/if}
 				</button>
 			{/each}
 		</nav>

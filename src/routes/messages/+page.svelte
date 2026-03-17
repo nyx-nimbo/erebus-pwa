@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import {
 		getConversations,
@@ -8,6 +8,16 @@
 		markRead,
 		getMembers
 	} from '$lib/api';
+	import {
+		onWsMessage,
+		sendWsMessage,
+		sendTyping,
+		isConnected,
+		typingUsers,
+		presenceMap,
+		unreadWsCount,
+		type WsIncoming
+	} from '$lib/websocket';
 	import type { Conversation, Message, Member } from '$lib/types';
 
 	let conversations = $state<Conversation[]>([]);
@@ -23,6 +33,9 @@
 	let showNewMessage = $state(false);
 	let search = $state('');
 	let messagesEnd: HTMLDivElement | undefined = $state();
+	let typingMap = $state<Record<string, { name: string; timeout: ReturnType<typeof setTimeout> }>>({});
+	let presence = $state<Record<string, 'online' | 'offline'>>({});
+	let typingThrottle = 0;
 
 	let filteredConversations = $derived(
 		conversations
@@ -39,9 +52,23 @@
 		)
 	);
 
+	// Is the selected user currently typing?
+	let selectedTyping = $derived(selectedId ? !!typingMap[selectedId] : false);
+	// Selected user's online status
+	let selectedOnline = $derived(selectedId ? presence[selectedId] === 'online' : false);
+
+	// Subscribe to stores
+	const unsubTyping = typingUsers.subscribe((v) => (typingMap = v));
+	const unsubPresence = presenceMap.subscribe((v) => (presence = v));
+
+	let unsubWs: (() => void) | null = null;
+
 	onMount(() => {
 		loadConversations();
 		loadMembers();
+
+		// Listen for WebSocket messages
+		unsubWs = onWsMessage(handleWsMessage);
 
 		// Check URL for ?with= param
 		const withId = $page.url.searchParams.get('with');
@@ -50,12 +77,62 @@
 		}
 	});
 
+	onDestroy(() => {
+		unsubWs?.();
+		unsubTyping();
+		unsubPresence();
+	});
+
+	function handleWsMessage(data: WsIncoming) {
+		if (data.type === 'message' && data.fromId) {
+			const newMsg: Message = {
+				id: data.id || crypto.randomUUID(),
+				fromId: data.fromId,
+				fromName: data.fromName || data.fromId,
+				fromType: data.fromType || 'user',
+				toId: data.toId || '',
+				toName: data.toName || '',
+				content: data.content || '',
+				read: false,
+				createdAt: data.createdAt || new Date().toISOString()
+			};
+
+			// If this message is part of the currently open conversation
+			if (selectedId && (data.fromId === selectedId || data.toId === selectedId)) {
+				messages = [...messages, newMsg];
+				scrollToBottom();
+				// Mark as read since we're viewing it
+				if (data.fromId === selectedId && newMsg.id) {
+					markRead(newMsg.id).catch(() => {});
+				}
+			}
+
+			// Update conversation list
+			updateConversationFromMessage(data);
+		}
+	}
+
+	function updateConversationFromMessage(data: WsIncoming) {
+		const otherId = data.fromId || '';
+		const existing = conversations.find((c) => c.memberId === otherId);
+		if (existing) {
+			existing.lastMessage = data.content || '';
+			existing.lastMessageAt = data.createdAt || new Date().toISOString();
+			if (selectedId !== otherId) {
+				existing.unreadCount = (existing.unreadCount || 0) + 1;
+			}
+			conversations = [...conversations];
+		} else {
+			// New conversation appeared — reload list
+			loadConversations();
+		}
+	}
+
 	async function loadConversations() {
 		loading = true;
 		error = '';
 		try {
 			conversations = await getConversations();
-			// If we have a selected ID from URL but no name, resolve it
 			if (selectedId && !selectedName) {
 				const conv = conversations.find((c) => c.memberId === selectedId);
 				if (conv) selectedName = conv.memberName;
@@ -70,7 +147,6 @@
 	async function loadMembers() {
 		try {
 			members = await getMembers();
-			// Resolve name from URL param if needed
 			if (selectedId && !selectedName) {
 				const member = members.find((m) => m.email === selectedId || m.id === selectedId);
 				if (member) selectedName = member.name;
@@ -87,13 +163,11 @@
 		loadingMessages = true;
 		try {
 			messages = await getConversation(id);
-			// Mark unread messages as read
 			for (const msg of messages) {
 				if (!msg.read && msg.fromId === id) {
 					markRead(msg.id).catch(() => {});
 				}
 			}
-			// Update unread count in conversation list
 			const conv = conversations.find((c) => c.memberId === id);
 			if (conv) conv.unreadCount = 0;
 			scrollToBottom();
@@ -109,17 +183,53 @@
 		sending = true;
 		const content = messageInput.trim();
 		messageInput = '';
+
+		// Try WebSocket first, fall back to REST
+		if (isConnected()) {
+			const sent = sendWsMessage(selectedId, content);
+			if (sent) {
+				// Optimistically add message to UI
+				const optimistic: Message = {
+					id: crypto.randomUUID(),
+					fromId: '', // will be filled by server echo or next load
+					fromName: '',
+					fromType: 'user',
+					toId: selectedId,
+					toName: selectedName,
+					content,
+					read: false,
+					createdAt: new Date().toISOString()
+				};
+				messages = [...messages, optimistic];
+				scrollToBottom();
+				loadConversations();
+				sending = false;
+				return;
+			}
+		}
+
+		// Fallback to REST API
 		try {
 			const msg = await sendMessage(selectedId, content);
 			messages = [...messages, msg];
 			scrollToBottom();
-			// Refresh conversation list
 			loadConversations();
 		} catch (e: any) {
 			error = e.message || 'Failed to send message';
 			messageInput = content;
 		} finally {
 			sending = false;
+		}
+	}
+
+	function handleInput() {
+		// Send typing indicator (throttled to once per 2s)
+		if (selectedId && isConnected()) {
+			const now = Date.now();
+			if (now - typingThrottle > 2000) {
+				typingThrottle = now;
+				sendTyping(selectedId);
+			}
 		}
 	}
 
@@ -230,8 +340,13 @@
 							class="w-full flex items-center gap-3 p-3 text-left transition-colors border-b border-[#262626]/50 {selectedId === conv.memberId ? 'bg-[#7c3aed]/10 border-l-2 border-l-[#7c3aed]' : 'hover:bg-[#1a1a1a]'}"
 							onclick={() => selectConversation(conv.memberId, conv.memberName)}
 						>
-							<div class="w-8 h-8 rounded-full bg-[#262626] flex items-center justify-center text-[#a3a3a3] text-xs font-medium shrink-0">
-								{conv.memberName.charAt(0).toUpperCase()}
+							<div class="relative shrink-0">
+								<div class="w-8 h-8 rounded-full bg-[#262626] flex items-center justify-center text-[#a3a3a3] text-xs font-medium">
+									{conv.memberName.charAt(0).toUpperCase()}
+								</div>
+								{#if presence[conv.memberId] === 'online'}
+									<div class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-[#111]"></div>
+								{/if}
 							</div>
 							<div class="min-w-0 flex-1">
 								<div class="flex items-center justify-between">
@@ -264,10 +379,22 @@
 					>
 						&#8592;
 					</button>
-					<div class="w-8 h-8 rounded-full bg-[#262626] flex items-center justify-center text-[#a3a3a3] text-xs font-medium">
-						{selectedName ? selectedName.charAt(0).toUpperCase() : '?'}
+					<div class="relative">
+						<div class="w-8 h-8 rounded-full bg-[#262626] flex items-center justify-center text-[#a3a3a3] text-xs font-medium">
+							{selectedName ? selectedName.charAt(0).toUpperCase() : '?'}
+						</div>
+						{#if selectedOnline}
+							<div class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-[#111]"></div>
+						{/if}
 					</div>
-					<span class="text-[#e5e5e5] font-medium text-sm">{selectedName || selectedId}</span>
+					<div class="flex flex-col">
+						<span class="text-[#e5e5e5] font-medium text-sm">{selectedName || selectedId}</span>
+						{#if selectedTyping}
+							<span class="text-[#7c3aed] text-[10px] animate-pulse">typing...</span>
+						{:else if selectedOnline}
+							<span class="text-green-400 text-[10px]">online</span>
+						{/if}
+					</div>
 				</div>
 
 				<!-- Messages -->
@@ -298,6 +425,13 @@
 					<div bind:this={messagesEnd}></div>
 				</div>
 
+				<!-- Typing indicator -->
+				{#if selectedTyping}
+					<div class="px-4 py-1 text-[#7c3aed] text-xs animate-pulse">
+						{typingMap[selectedId!]?.name || 'Someone'} is typing...
+					</div>
+				{/if}
+
 				<!-- Input -->
 				<div class="p-3 border-t border-[#262626] bg-[#111]">
 					<div class="flex gap-2">
@@ -306,6 +440,7 @@
 							placeholder="Type a message..."
 							bind:value={messageInput}
 							onkeydown={handleKeydown}
+							oninput={handleInput}
 							class="flex-1 px-4 py-2 bg-[#1a1a1a] border border-[#262626] rounded-lg text-[#e5e5e5] placeholder-[#a3a3a3] text-sm focus:outline-none focus:border-[#7c3aed] transition-colors"
 						/>
 						<button
