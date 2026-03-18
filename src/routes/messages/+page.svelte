@@ -6,7 +6,8 @@
 		getConversation,
 		sendMessage,
 		markRead,
-		getMembers
+		getMembers,
+		deleteConversation
 	} from '$lib/api';
 	import {
 		onWsMessage,
@@ -37,6 +38,10 @@
 	let presence = $state<Record<string, 'online' | 'offline'>>({});
 	let typingThrottle = 0;
 	let dataLoaded = $state(false);
+	let waitingForReply = $state(false);
+	let pollInterval: ReturnType<typeof setInterval> | null = null;
+	let pollTimeout: ReturnType<typeof setTimeout> | null = null;
+	let showClearConfirm = $state(false);
 
 	let filteredConversations = $derived(
 		conversations
@@ -89,6 +94,7 @@
 		unsubWs?.();
 		unsubTyping();
 		unsubPresence();
+		stopPolling();
 	});
 
 	function handleWsMessage(data: WsIncoming) {
@@ -107,11 +113,19 @@
 
 			// If this message is part of the currently open conversation
 			if (selectedId && (data.fromId === selectedId || data.toId === selectedId)) {
-				messages = [...messages, newMsg];
+				// Deduplicate by id
+				if (!messages.some((m) => m.id === newMsg.id)) {
+					messages = [...messages, newMsg];
+				}
 				scrollToBottom();
 				// Mark as read since we're viewing it
 				if (data.fromId === selectedId && newMsg.id) {
 					markRead(newMsg.id).catch(() => {});
+				}
+				// Reply arrived — stop waiting and polling
+				if (data.fromId === selectedId) {
+					waitingForReply = false;
+					stopPolling();
 				}
 			}
 
@@ -216,6 +230,8 @@
 				scrollToBottom();
 				loadConversations();
 				sending = false;
+				waitingForReply = true;
+				startPolling();
 				return;
 			}
 		}
@@ -226,6 +242,8 @@
 			messages = [...messages, msg];
 			scrollToBottom();
 			loadConversations();
+			waitingForReply = true;
+			startPolling();
 		} catch (e: any) {
 			error = e.message || 'Failed to send message';
 			messageInput = content;
@@ -248,6 +266,56 @@
 	function startNewConversation(member: Member) {
 		const id = member.email || member.id;
 		selectConversation(id, member.name);
+	}
+
+	function startPolling() {
+		stopPolling();
+		if (!selectedId) return;
+		const targetId = selectedId;
+		pollInterval = setInterval(async () => {
+			if (!targetId || targetId !== selectedId) { stopPolling(); return; }
+			try {
+				const fresh = await getConversation(targetId);
+				if (!Array.isArray(fresh)) return;
+				const existingIds = new Set(messages.map((m) => m.id));
+				let gotReply = false;
+				for (const msg of fresh) {
+					if (!existingIds.has(msg.id)) {
+						messages = [...messages, msg];
+						if (msg.fromId === targetId) gotReply = true;
+						if (msg.fromId === targetId && msg.id) markRead(msg.id).catch(() => {});
+					}
+				}
+				if (gotReply) {
+					waitingForReply = false;
+					stopPolling();
+					scrollToBottom();
+				}
+			} catch { /* ignore polling errors */ }
+		}, 3000);
+		// Stop after 30 seconds
+		pollTimeout = setTimeout(() => {
+			waitingForReply = false;
+			stopPolling();
+		}, 30000);
+	}
+
+	function stopPolling() {
+		if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+		if (pollTimeout) { clearTimeout(pollTimeout); pollTimeout = null; }
+	}
+
+	async function handleClearConversation() {
+		if (!selectedId) return;
+		try {
+			await deleteConversation(selectedId);
+			messages = [];
+			showClearConfirm = false;
+			loadConversations();
+		} catch (e: any) {
+			error = e.message || 'Failed to clear conversation';
+			showClearConfirm = false;
+		}
 	}
 
 	function scrollToBottom() {
@@ -405,13 +473,41 @@
 							<div class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-[#111]"></div>
 						{/if}
 					</div>
-					<div class="flex flex-col">
+					<div class="flex flex-col flex-1">
 						<span class="text-[#e5e5e5] font-medium text-sm">{selectedName || selectedId}</span>
 						{#if selectedTyping}
 							<span class="text-[#7c3aed] text-[10px] animate-pulse">typing...</span>
 						{:else if selectedOnline}
 							<span class="text-green-400 text-[10px]">online</span>
 						{/if}
+					</div>
+					<!-- Clear conversation -->
+					<div class="relative">
+						{#if showClearConfirm}
+							<div class="absolute right-0 top-8 z-10 bg-[#1a1a1a] border border-[#262626] rounded-lg p-3 shadow-lg min-w-[180px]">
+								<p class="text-[#e5e5e5] text-xs mb-2">Clear this conversation?</p>
+								<div class="flex gap-2">
+									<button
+										class="flex-1 px-2 py-1 bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs rounded transition-colors"
+										onclick={handleClearConversation}
+									>Clear</button>
+									<button
+										class="flex-1 px-2 py-1 bg-[#262626] hover:bg-[#333] text-[#a3a3a3] text-xs rounded transition-colors"
+										onclick={() => (showClearConfirm = false)}
+									>Cancel</button>
+								</div>
+							</div>
+						{/if}
+						<button
+							class="p-1.5 text-[#a3a3a3] hover:text-red-400 transition-colors rounded hover:bg-[#1a1a1a]"
+							title="Clear conversation"
+							onclick={() => (showClearConfirm = !showClearConfirm)}
+						>
+							<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<polyline points="3 6 5 6 21 6"></polyline>
+								<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+							</svg>
+						</button>
 					</div>
 				</div>
 
@@ -439,6 +535,18 @@
 								</div>
 							</div>
 						{/each}
+					{/if}
+					<!-- Thinking indicator (waiting for reply) -->
+					{#if waitingForReply}
+						<div class="flex justify-start">
+							<div class="px-4 py-3 rounded-lg bg-[#1a1a1a] border border-[#262626]">
+								<div class="flex gap-1.5 items-center">
+									<span class="w-2 h-2 rounded-full bg-[#7c3aed] thinking-dot"></span>
+									<span class="w-2 h-2 rounded-full bg-[#7c3aed] thinking-dot" style="animation-delay: 0.15s"></span>
+									<span class="w-2 h-2 rounded-full bg-[#7c3aed] thinking-dot" style="animation-delay: 0.3s"></span>
+								</div>
+							</div>
+						</div>
 					{/if}
 					<div bind:this={messagesEnd}></div>
 				</div>
@@ -482,3 +590,14 @@
 		</div>
 	</div>
 </div>
+
+<style>
+	.thinking-dot {
+		animation: thinking-pulse 1.2s ease-in-out infinite;
+		opacity: 0.3;
+	}
+	@keyframes thinking-pulse {
+		0%, 100% { opacity: 0.3; transform: scale(0.8); }
+		50% { opacity: 1; transform: scale(1.1); }
+	}
+</style>

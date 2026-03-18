@@ -252,6 +252,8 @@ export const markRead = (id: string) =>
 	request<void>(`/messages/${id}/read`, { method: 'PUT' });
 export const getUnreadCount = () =>
 	request<{ count: number }>('/messages/unread').then(r => r.count);
+export const deleteConversation = (withId: string) =>
+	request<{ deleted: number }>(`/messages/conversation?with=${encodeURIComponent(withId)}`, { method: 'DELETE' });
 
 // Google Services Connection
 export const getGoogleConnectURL = (redirectUri: string) =>
